@@ -1,0 +1,105 @@
+:root {
+  --color-bg-primary: #0f172a;
+  --color-bg-secondary: #111827;
+  --color-bg-elevated: #1e293b;
+  --color-text-primary: #e5e7eb;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #64748b;
+  --color-signal-positive: #22c55e;
+  --color-signal-warning: #f59e0b;
+  --color-signal-negative: #ef4444;
+  --color-accent: #3b82f6;
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --font-primary: 'Inter', system-ui, sans-serif;
+  --space-section: 32px;
+  --space-component: 16px;
+  --radius-md: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+.main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-section) 24px;
+}
+
+.card {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-component);
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.error {
+  color: var(--color-signal-negative);
+}
+
+.success {
+  color: var(--color-signal-positive);
+}
+
+/* Sticky context bar */
+.bnpl-sticky-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+  padding: 10px 0;
+  margin-bottom: var(--space-component);
+  background: var(--color-bg-primary);
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+.bnpl-sticky-bar .bnpl-date { font-weight: 600; color: var(--color-text-primary); }
+.bnpl-sticky-bar .bnpl-refresh { color: var(--color-text-muted); }
+
+/* Section title */
+.section-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+  margin: var(--space-section) 0 var(--space-component) 0;
+}
+
+/* Funnel strip */
+.funnel-strip {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.funnel-step {
+  min-width: 90px;
+  padding: 8px 10px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+}
+.funnel-step-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
+.funnel-step-value { font-size: 0.95rem; font-weight: 600; color: var(--color-text-primary); }
+.funnel-step-pct { font-size: 0.7rem; color: var(--color-text-muted); margin-top: 2px; }
+.funnel-arrow { color: var(--color-border-subtle); margin: 0 4px; }
+.expander-content { margin-top: 8px; }
