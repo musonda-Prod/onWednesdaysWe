@@ -1,0 +1,23 @@
+Tables: ['CDC_BNPL_PRODUCTION.PUBLIC.COLLECTION_ATTEMPT', 'CDC_BNPL_PRODUCTION.PUBLIC.COLLECTION_ATTEMPT_INSTALMENT_LINK']
+
+============================================================
+Table: CDC_BNPL_PRODUCTION.PUBLIC.COLLECTION_ATTEMPT
+============================================================
+Columns (11): ID, TRANSACTION_ID, QUANTITY, STATUS, EXECUTED_AT, CREATED_AT, UPDATED_AT, REASON, INTERNAL_REASON, TYPE, FAILURE_CLASSIFICATION
+Sample rows (up to 5):
+  Row 1: ('8b759bb5-3210-4578-b06b-5758c91e2127', 'e48e1842-e222-4bf6-be11-58f365059a6e', '200', 'FAILED', datetime.datetime(2026, 2, 15, 15, 42, 19, 949000, tzinfo=<UTC>), datetime.datetime(2026, 2, 15, 15, 42, 19, 945080, tzinfo=<UTC>), datetime.datetime(2026, 2, 15, 15, 42, 19, 945080, tzinfo=<UTC>), 'secure3dDeclined', 'secure3dDeclined', 'INITIAL', None)
+  Row 2: ('85e0033d-458a-41f7-835b-e9eabab25ea6', 'a6439913-e076-4cce-8974-6cfebef8be04', '300', 'FAILED', datetime.datetime(2026, 2, 15, 14, 16, 9, 23000, tzinfo=<UTC>), datetime.datetime(2026, 2, 15, 14, 16, 9, 21036, tzinfo=<UTC>), datetime.datetime(2026, 2, 15, 14, 16, 9, 21036, tzinfo=<UTC>), 'authorizationFailed', 'authorizationFailed', 'INITIAL', None)
+  Row 3: ('00743c62-b11d-4895-827a-3d33a0123e38', '61d62361-1c9d-4d4b-b81f-5eb3d34e57b7', '85', 'COMPLETED', datetime.datetime(2026, 2, 15, 12, 32, 55, 264000, tzinfo=<UTC>), datetime.datetime(2026, 2, 15, 12, 32, 55, 258489, tzinfo=<UTC>), datetime.datetime(2026, 2, 15, 12, 32, 55, 258489, tzinfo=<UTC>), None, None, 'INITIAL', None)
+  Row 4: ('f3003d84-afd8-40e4-9999-45ee7e010867', '64c5b65a-1d1c-4ec7-a9a7-f23031f70324', '299.83', 'COMPLETED', datetime.datetime(2026, 2, 15, 11, 15, 47, 447000, tzinfo=<UTC>), datetime.datetime(2026, 2, 15, 11, 15, 47, 442403, tzinfo=<UTC>), datetime.datetime(2026, 2, 15, 11, 15, 47, 442403, tzinfo=<UTC>), None, None, 'EXTERNAL', None)
+  Row 5: ('22b58a13-d71c-4661-b346-cc0330d5e752', '1cc0049b-c8bf-4d54-8b3a-6ff07c1e707d', '1866.5', 'COMPLETED', datetime.datetime(2026, 2, 15, 10, 42, 6, 458000, tzinfo=<UTC>), datetime.datetime(2026, 2, 15, 10, 42, 6, 455185, tzinfo=<UTC>), datetime.datetime(2026, 2, 15, 10, 42, 6, 455185, tzinfo=<UTC>), None, None, 'INITIAL', None)
+
+============================================================
+Table: CDC_BNPL_PRODUCTION.PUBLIC.COLLECTION_ATTEMPT_INSTALMENT_LINK
+============================================================
+Columns (3): ID, COLLECTION_ATTEMPT_ID, INSTALMENT_ID
+Sample rows (up to 5):
+  Row 1: ('7dc5b122-cd6d-4acd-971a-84107f5e4e98', '8b759bb5-3210-4578-b06b-5758c91e2127', '63fbb7b8-dfc4-4215-8332-14b9004cd6ab')
+  Row 2: ('2d01f4e7-1ddd-4563-972c-f0042911d99d', '5c3c01d9-4a38-4819-be4e-4c1469771259', 'c9bcf2bd-fa5c-4c99-b16d-086da3e3dcac')
+  Row 3: ('59caf42f-1c38-416d-ba2b-a3db0e513fef', '85e0033d-458a-41f7-835b-e9eabab25ea6', 'f35e4f4b-69ba-479b-a12a-6412078aa0b9')
+  Row 4: ('18ebc267-3ef3-4dc0-8e5d-60c7dc413b45', '00743c62-b11d-4895-827a-3d33a0123e38', 'd359cb0e-e4e8-4deb-8fa2-e6fcf02301c1')
+  Row 5: ('7f822c4c-01d4-4183-8018-59cb384fe17a', '22b58a13-d71c-4661-b346-cc0330d5e752', 'd94f3269-5ec8-456e-a580-6795c673afb1')

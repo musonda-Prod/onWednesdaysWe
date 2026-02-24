@@ -7,9 +7,7 @@ __pycache__/
 venv/
 Funnel_Analysis.xlsx
 Revenue_Pivot_By_Month_Product.xlsx
-TABLE_SCHEMA.txt
-
-# Vercel app
+TABLE_SCHEMA.txt# Vercel app
 vercel-app/.env.local
 vercel-app/node_modules
 vercel-app/.next

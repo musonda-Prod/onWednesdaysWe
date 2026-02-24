@@ -512,8 +512,9 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {d?.merchant?.by_merchant?.length > 0 && (() => {
-          const byMerchant = d.merchant.by_merchant;
+        {(() => {
+          const byMerchant = d?.merchant?.by_merchant;
+          if (!byMerchant || byMerchant.length === 0) return null;
           const totalVol = byMerchant.reduce((s, r) => s + r.total_plan_amount, 0);
           const top12 = byMerchant.slice(0, 12);
           const barColors = [PALETTE.chartStable, PALETTE.chartRoller, PALETTE.chartVolatile, PALETTE.chartEscalator, PALETTE.accent, '#8B5CF6', '#06B6D4', '#EC4899', '#84CC16', '#F97316'];
@@ -541,32 +542,36 @@ export default function DashboardPage() {
           );
         })()}
 
-        {d?.merchant?.by_merchant?.length > 0 && (
-          <>
-            <p style={{ fontWeight: 700, marginBottom: 4 }}>Revenue per merchant</p>
-            <p style={{ fontSize: '0.8rem', color: PALETTE.textSoft, marginBottom: 8 }}>Revenue per merchant = 4.99% of each individual plan amount for that merchant (sum over all plans in the selected period).</p>
-            <div style={{ overflowX: 'auto', marginBottom: 24 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                <thead>
-                  <tr style={{ borderBottom: `2px solid ${PALETTE.border}` }}>
-                    <th style={{ textAlign: 'left', padding: '10px 12px', color: PALETTE.textSoft, fontWeight: 600 }}>Merchant</th>
-                    <th style={{ textAlign: 'right', padding: '10px 12px', color: PALETTE.textSoft, fontWeight: 600 }}>Plan amount (R)</th>
-                    <th style={{ textAlign: 'right', padding: '10px 12px', color: PALETTE.textSoft, fontWeight: 600 }}>Revenue (4.99%) (R)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.merchant.by_merchant.slice(0, 15).map((row) => (
-                    <tr key={row.merchant} style={{ borderBottom: `1px solid ${PALETTE.border}` }}>
-                      <td style={{ padding: '10px 12px', color: PALETTE.text }}>{row.merchant}</td>
-                      <td style={{ padding: '10px 12px', color: PALETTE.text, textAlign: 'right' }}>{row.total_plan_amount.toLocaleString('en-ZA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
-                      <td style={{ padding: '10px 12px', color: PALETTE.text, textAlign: 'right' }}>{(row.total_plan_amount * REVENUE_RATE).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        {(() => {
+          const byMerchant = d?.merchant?.by_merchant;
+          if (!byMerchant || byMerchant.length === 0) return null;
+          return (
+            <>
+              <p style={{ fontWeight: 700, marginBottom: 4 }}>Revenue per merchant</p>
+              <p style={{ fontSize: '0.8rem', color: PALETTE.textSoft, marginBottom: 8 }}>Revenue per merchant = 4.99% of each individual plan amount for that merchant (sum over all plans in the selected period).</p>
+              <div style={{ overflowX: 'auto', marginBottom: 24 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: `2px solid ${PALETTE.border}` }}>
+                      <th style={{ textAlign: 'left', padding: '10px 12px', color: PALETTE.textSoft, fontWeight: 600 }}>Merchant</th>
+                      <th style={{ textAlign: 'right', padding: '10px 12px', color: PALETTE.textSoft, fontWeight: 600 }}>Plan amount (R)</th>
+                      <th style={{ textAlign: 'right', padding: '10px 12px', color: PALETTE.textSoft, fontWeight: 600 }}>Revenue (4.99%) (R)</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+                  </thead>
+                  <tbody>
+                    {byMerchant.slice(0, 15).map((row) => (
+                      <tr key={row.merchant} style={{ borderBottom: `1px solid ${PALETTE.border}` }}>
+                        <td style={{ padding: '10px 12px', color: PALETTE.text }}>{row.merchant}</td>
+                        <td style={{ padding: '10px 12px', color: PALETTE.text, textAlign: 'right' }}>{row.total_plan_amount.toLocaleString('en-ZA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                        <td style={{ padding: '10px 12px', color: PALETTE.text, textAlign: 'right' }}>{(row.total_plan_amount * REVENUE_RATE).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          );
+        })()}
 
         {totalRevenue != null && totalRevenue > 0 && (
           <>
