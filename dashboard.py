@@ -1966,6 +1966,43 @@ FUNNEL_STEP_SCREEN_INDEX = {
 }
 
 # Per-step drop-off: why it may happen and how to fix (for conversion suggestions).
+
+
+def _dropoff_advice_for_step(drop_n: int, pct: float, rank: int, total_drops: int, base_why: str, base_fix: str):
+    """Build dynamic why/fix text based on drop count, percentage, and rank. Returns (why_html, fix_html) safe to escape."""
+    if drop_n is None or drop_n <= 0:
+        why = "No drop-off in the selected period for this step."
+        fix = "Keep monitoring; focus on steps with higher drop-off above."
+        return (html.escape(why), html.escape(fix))
+    pct_val = pct if pct is not None else 0
+    drop_str = f"{drop_n:,}"
+    pct_str = f"{pct_val:.1f}%"
+    # Lead-in based on rank and severity
+    if rank == 1 and total_drops > 0:
+        share = round(100 * drop_n / total_drops) if total_drops else 0
+        lead_why = f"<strong>Top priority</strong> — {drop_str} users dropped here ({pct_str} of previous step), {share}% of all drop-off in this period. "
+        lead_fix = "<strong>Prioritise:</strong> "
+    elif rank == 2:
+        lead_why = f"<strong>Second-highest drop-off</strong> — {drop_str} users ({pct_str}). "
+        lead_fix = "After addressing the top step: "
+    elif rank == 3:
+        lead_why = f"<strong>Third</strong> — {drop_str} users ({pct_str}). "
+        lead_fix = ""
+    else:
+        lead_why = f"{drop_str} users ({pct_str}). "
+        lead_fix = ""
+    # Severity by rate
+    if pct_val >= 40:
+        severity = " High drop-off rate — "
+    elif pct_val >= 20:
+        severity = " Moderate drop-off — "
+    else:
+        severity = " "
+    why_safe = lead_why + severity + html.escape(base_why)
+    fix_safe = lead_fix + html.escape(base_fix)
+    return (why_safe, fix_safe)
+
+
 FUNNEL_DROPOFF_SUGGESTIONS = [
     {
         "from_step": "Signed up",
@@ -4866,27 +4903,43 @@ def render_bnpl_performance(conn, tables):
         range_label = " (in selected date range)" if (funnel_fd and funnel_td) else ""
         all_label = f" · **{consumers_plan_all_str}** all time" if (funnel_fd and funnel_td and n_consumers_with_plan_all is not None) else ""
         st.markdown("**Consumers with ≥1 plan:** **" + consumers_plan_str + "**" + range_label + all_label + " — distinct CONSUMER_PROFILE_ID with at least one INSTALMENT_PLAN (any status).")
-        # Per-step suggestions: why drop-off may have happened and how to fix (card layout)
+        # Per-step suggestions: why drop-off may have happened and how to fix (card layout) — dynamic by date range, sorted by drop count
         drop_counts = [drop_kyc_completed, drop_credit_check, drop_plan_creation, drop_initial_collection]
+        drop_pcts = [pct_drop_kyc, pct_drop_cc, pct_drop_plan, pct_drop_initial]
+        step_names = ["Signed up → KYC", "KYC → Credit check", "Credit check → Plan", "Plan → First payment"]
+        # Build (original_index, step_title, drop_n, pct, sug) and sort by drop_n descending so biggest drop is first
+        step_rows = []
+        for i, sug in enumerate(FUNNEL_DROPOFF_SUGGESTIONS):
+            drop_n = drop_counts[i] if i < len(drop_counts) else 0
+            pct = drop_pcts[i] if i < len(drop_pcts) else 0
+            step_title = step_names[i] if i < len(step_names) else f"{sug['from_step']} → {sug['to_step']}"
+            step_rows.append((i, step_title, drop_n, pct, sug))
+        step_rows.sort(key=lambda r: (r[2] or 0), reverse=True)
+        total_drops = sum(drop_counts) or 0
+
         with st.expander("Why drop-off may happen at each step and how to fix it", expanded=True):
-            st.caption("Each card below is one funnel step. **Why it may happen** = common causes of drop-off. **How to fix** = actions to improve conversion. Use the drop count to prioritise.")
-            step_names = ["Signed up → KYC", "KYC → Credit check", "Credit check → Plan", "Plan → First payment"]
-            for i, sug in enumerate(FUNNEL_DROPOFF_SUGGESTIONS):
-                drop_n = drop_counts[i] if i < len(drop_counts) else 0
-                step_title = step_names[i] if i < len(step_names) else f"{sug['from_step']} → {sug['to_step']}"
-                drop_badge = f'<span style="background:' + PALETTE["panel"] + "; border:1px solid " + PALETTE["border"] + "; border-radius:999px; padding:2px 8px; font-size:0.7rem; color:" + PALETTE["text_soft"] + ';">' + f"{drop_n:,} dropped" + "</span>" if drop_n and drop_n > 0 else ""
+            period_label = ""
+            if funnel_fd and funnel_td:
+                period_label = f" **Drop counts for period: {funnel_fd.strftime('%d %b %Y')} → {funnel_td.strftime('%d %b %Y')}.**"
+            st.caption("Each card is one funnel step. **Why it may happen** = common causes of drop-off. **How to fix** = actions to improve conversion. Cards are ordered by **drop count (highest first)** so you can prioritise." + period_label)
+            for rank, (orig_i, step_title, drop_n, pct, sug) in enumerate(step_rows, start=1):
+                why_html, fix_html = _dropoff_advice_for_step(drop_n, pct, rank, total_drops, sug["why"], sug["fix"])
+                drop_badge = ""
+                if drop_n and drop_n > 0:
+                    pct_str = f" ({pct:.1f}% of previous step)" if pct is not None else ""
+                    drop_badge = f'<span style="background:' + PALETTE["panel"] + "; border:1px solid " + PALETTE["border"] + "; border-radius:999px; padding:2px 8px; font-size:0.7rem; color:" + PALETTE["text_soft"] + ';">' + f"{drop_n:,} dropped{pct_str}" + "</span>"
                 card = (
                     '<div style="background:' + PALETTE["panel"] + "; border:1px solid " + PALETTE["border"] + "; border-radius:8px; border-left:4px solid " + PALETTE["accent"] + '; padding:12px 16px; margin-bottom:12px;">'
                     + '<div style="font-size:0.8rem; font-weight:700; color:' + PALETTE["heading"] + '; margin-bottom:8px; display:flex; align-items:center; gap:8px;">'
-                    + f"<span>{i + 1}. {step_title}</span> {drop_badge}"
+                    + f"<span>{rank}. {step_title}</span> {drop_badge}"
                     + "</div>"
                     + '<div style="margin-bottom:8px;">'
                     + '<div style="font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em; color:' + PALETTE["text_soft"] + '; margin-bottom:4px;">Why it may happen</div>'
-                    + '<div style="font-size:0.8rem; line-height:1.5; color:' + PALETTE["text"] + ';">' + html.escape(sug["why"]) + "</div>"
+                    + '<div style="font-size:0.8rem; line-height:1.5; color:' + PALETTE["text"] + ';">' + why_html + "</div>"
                     + "</div>"
                     + '<div>'
                     + '<div style="font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em; color:' + PALETTE["text_soft"] + '; margin-bottom:4px;">How to fix</div>'
-                    + '<div style="font-size:0.8rem; line-height:1.5; color:' + PALETTE["text"] + ';">' + html.escape(sug["fix"]) + "</div>"
+                    + '<div style="font-size:0.8rem; line-height:1.5; color:' + PALETTE["text"] + ';">' + fix_html + "</div>"
                     + "</div>"
                     + "</div>"
                 )
