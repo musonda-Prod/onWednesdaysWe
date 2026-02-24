@@ -157,7 +157,8 @@ export default function DashboardPage() {
     { label: 'Plan → Initial collection', pct: pctDropInitial },
   ];
   const sortedDrops = [...drops].sort((a, b) => b.pct - a.pct);
-  const largestDrop = sortedDrops.every((x) => x.pct === 0) ? '—' : sortedDrops[0].label + ' (' + sortedDrops[0].pct + '%)';
+  const firstDrop = sortedDrops[0];
+  const largestDrop = sortedDrops.every((x) => x.pct === 0) || !firstDrop ? '—' : `${firstDrop.label} (${firstDrop.pct}%)`;
 
   const nextBestActions = [
     (personaPcts.stitch > 0 && PERSONA_DISPLAY_NAMES.stitch) ? `${PERSONA_DISPLAY_NAMES.stitch}: Focus on retry timing and early contact.` : null,
