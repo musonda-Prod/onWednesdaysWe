@@ -408,7 +408,7 @@ export default function DashboardPage() {
           {expanded.funnel && (
             <div className="expander-content">
               <p style={{ fontSize: '0.8rem', color: PALETTE.textSoft, marginTop: 8 }}>
-                Sign-up → Plan creation → initial collection. Largest drop: {largestDrop}
+                Sign-up → Plan creation → initial collection. Largest drop: {String(largestDrop)}
               </p>
               <div className="funnel-strip" style={{ marginTop: 12 }}>
                 <div className="funnel-step"><div className="funnel-step-label">Signed up</div><div className="funnel-step-value">{fmtNum(nApplied)}</div><div className="funnel-step-pct">—</div></div>
