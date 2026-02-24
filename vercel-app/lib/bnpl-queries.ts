@@ -179,9 +179,9 @@ async function withTimeoutNull<T>(promise: Promise<T>, ms: number): Promise<T | 
   }
 }
 
-/** Per-query timeout so we always return within the function limit; slow queries become null. */
-const BOUNDED_QUERY_TIMEOUT_MS = 20_000;
-const SLOW_QUERY_TIMEOUT_MS = 8_000;
+/** Per-query timeout so connection (with retry) + queries stay under 55s. */
+const BOUNDED_QUERY_TIMEOUT_MS = 15_000;
+const SLOW_QUERY_TIMEOUT_MS = 10_000;
 
 export async function loadBnplData(
   conn: Connection,

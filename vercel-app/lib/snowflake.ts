@@ -46,7 +46,7 @@ export function connectAsync(connection: snowflake.Connection): Promise<snowflak
   });
 }
 
-const CONNECTION_TIMEOUT_MS = 18_000;
+const CONNECTION_TIMEOUT_MS = 18_000; // Per attempt; retry once (~40s max) so queries have ~15s
 
 /** Connect with timeout so we don't burn the whole request on a sleeping warehouse. */
 export function connectWithTimeout(connection: snowflake.Connection): Promise<snowflake.Connection> {
@@ -109,12 +109,20 @@ export async function runScalar(
   return null;
 }
 
-/** Connect, run a query, then destroy the connection. Safe for serverless (no long-lived connections). */
+const CONNECTION_RETRY_DELAY_MS = 4_000;
+
+/** Connect, run a query, then destroy the connection. Retries connection once if it times out (warehouse resuming). */
 export async function withConnection<T>(
   fn: (conn: snowflake.Connection) => Promise<T>
 ): Promise<T> {
-  const conn = createConnection();
-  await connectWithTimeout(conn);
+  let conn = createConnection();
+  try {
+    await connectWithTimeout(conn);
+  } catch {
+    await new Promise((r) => setTimeout(r, CONNECTION_RETRY_DELAY_MS));
+    conn = createConnection();
+    await connectWithTimeout(conn);
+  }
   try {
     return await fn(conn);
   } finally {
