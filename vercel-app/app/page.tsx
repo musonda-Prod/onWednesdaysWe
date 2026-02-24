@@ -114,7 +114,7 @@ export default function DashboardPage() {
         first_attempt_pct: null,
         default_rate_pct: null,
         penalty_ratio_pct: null,
-        merchant: { top3_volume_pct: null, n_merchants: null },
+        merchant: { top3_volume_pct: null, n_merchants: null, by_merchant: [] },
       });
     } finally {
       setLoading(false);
