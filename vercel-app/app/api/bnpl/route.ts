@@ -3,7 +3,8 @@ import { withConnection } from '@/lib/snowflake';
 import { loadBnplData } from '@/lib/bnpl-queries';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 30;
+/** Use full 60s (Hobby max) so Snowflake connection + queries can finish. */
+export const maxDuration = 60;
 
 const emptyPayload = (from: string | null, to: string | null, error: string) => ({
   from,
@@ -28,12 +29,24 @@ const emptyPayload = (from: string | null, to: string | null, error: string) => 
   merchant: { top3_volume_pct: null, n_merchants: null, by_merchant: [] },
 });
 
+const TIMEOUT_MS = 55_000; // Leave a few seconds under Vercel limit
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('Request timed out. Snowflake took too long — try a smaller date range or try again.')), ms);
+    promise.then((v) => { clearTimeout(t); resolve(v); }).catch((e) => { clearTimeout(t); reject(e); });
+  });
+}
+
 export async function GET(request: NextRequest) {
   const from = request.nextUrl.searchParams.get('from') ?? null;
   const to = request.nextUrl.searchParams.get('to') ?? null;
 
   try {
-    const payload = await withConnection((conn) => loadBnplData(conn, from, to));
+    const payload = await withTimeout(
+      withConnection((conn) => loadBnplData(conn, from, to)),
+      TIMEOUT_MS
+    );
     return NextResponse.json(payload);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
