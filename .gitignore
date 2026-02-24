@@ -1,0 +1,10 @@
+.env
+env.example
+.env.example
+*.pyc
+__pycache__/
+.venv/
+venv/
+Funnel_Analysis.xlsx
+Revenue_Pivot_By_Month_Product.xlsx
+TABLE_SCHEMA.txt
