@@ -150,13 +150,14 @@ export default function DashboardPage() {
   const pctDropCredit = nKyc ? Math.round((1000 * dropCredit) / nKyc) / 10 : 0;
   const pctDropPlan = nCredit ? Math.round((1000 * dropPlan) / nCredit) / 10 : 0;
   const pctDropInitial = nPlan ? Math.round((1000 * dropInitial) / nPlan) / 10 : 0;
-  const drops: { label: string; pct: number }[] = [
+  type DropItem = { label: string; pct: number };
+  const drops: DropItem[] = [
     { label: 'Signed up → KYC', pct: pctDropKyc },
     { label: 'KYC → Credit check', pct: pctDropCredit },
     { label: 'Credit check → Plan', pct: pctDropPlan },
     { label: 'Plan → Initial collection', pct: pctDropInitial },
   ];
-  const sortedDrops = [...drops].sort((a, b) => b.pct - a.pct);
+  const sortedDrops = [...drops].sort((a: DropItem, b: DropItem) => b.pct - a.pct);
   const firstDrop = sortedDrops[0];
   const largestDrop = sortedDrops.every((x) => x.pct === 0) || !firstDrop ? '—' : `${firstDrop.label} (${firstDrop.pct}%)`;
 
