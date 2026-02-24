@@ -163,6 +163,25 @@ export interface BnplPayload {
   error?: string;
 }
 
+/** Run promise; on timeout return null instead of throwing (so slow queries don't block the response). */
+async function withTimeoutNull<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<null>((resolve) => {
+    timeoutId = setTimeout(() => resolve(null), ms);
+  });
+  try {
+    const result = await Promise.race([promise, timeout]);
+    clearTimeout(timeoutId!);
+    return result;
+  } catch {
+    clearTimeout(timeoutId!);
+    return null;
+  }
+}
+
+/** Queries that don't use date range — can be very slow on large tables. Run with short timeout. */
+const SLOW_QUERY_TIMEOUT_MS = 12_000;
+
 export async function loadBnplData(
   conn: Connection,
   fromDate: string | null,
@@ -193,6 +212,7 @@ export async function loadBnplData(
   };
 
   try {
+    // 1) Date-bounded queries only — keep these under the function timeout
     const [
       n_applied,
       n_credit_check_completed,
@@ -200,9 +220,6 @@ export async function loadBnplData(
       n_plan_creation,
       n_initial_collection,
       n_consumers_with_plan,
-      n_consumers_with_plan_all,
-      n_overdue,
-      credit_allocated,
       total_settled,
       total_collected,
       total_plan_amount,
@@ -214,32 +231,27 @@ export async function loadBnplData(
       runCount(conn, planCreationSql(from ?? undefined, to ?? undefined)),
       runCount(conn, initialCollectionSql(from ?? undefined, to ?? undefined)),
       runCount(conn, consumersWithPlanSql(from ?? undefined, to ?? undefined)),
-      runCount(conn, consumersWithPlanSql()),
-      runCount(conn, OVERDUE_COUNT_SQL),
-      runScalar(conn, CREDIT_ALLOCATED_SQL),
       runScalar(conn, loanBookSettledSql(from ?? undefined, to ?? undefined)),
       runScalar(conn, loanBookCollectedSql(from ?? undefined, to ?? undefined)),
       runScalar(conn, loanBookSettledSql(from ?? undefined, to ?? undefined)),
       loadMerchantBreakdown(conn, from ?? undefined, to ?? undefined),
     ]);
 
-    payload.n_applied = n_applied;
-    payload.n_credit_check_completed = n_credit_check_completed;
-    payload.n_kyc_completed = n_kyc_completed;
-    payload.n_plan_creation = n_plan_creation;
-    payload.n_initial_collection = n_initial_collection;
-    payload.n_consumers_with_plan = n_consumers_with_plan;
-    payload.n_consumers_with_plan_all = n_consumers_with_plan_all;
-    payload.n_overdue = n_overdue;
+    payload.n_applied = n_applied ?? null;
+    payload.n_credit_check_completed = n_credit_check_completed ?? null;
+    payload.n_kyc_completed = n_kyc_completed ?? null;
+    payload.n_plan_creation = n_plan_creation ?? null;
+    payload.n_initial_collection = n_initial_collection ?? null;
+    payload.n_consumers_with_plan = n_consumers_with_plan ?? null;
     payload.applications = n_initial_collection ?? null;
     if (n_credit_check_completed != null && n_applied != null && n_applied > 0) {
       payload.approval_rate_pct = Math.round((100 * (n_credit_check_completed ?? 0)) / n_applied * 10) / 10;
     }
-    payload.total_plan_amount = total_plan_amount;
+    payload.total_plan_amount = total_plan_amount ?? null;
     payload.loan_book = {
-      credit_allocated,
-      operations_settled: total_settled,
-      operations_collected: total_collected,
+      credit_allocated: null,
+      operations_settled: total_settled ?? null,
+      operations_collected: total_collected ?? null,
       total_settled: total_settled ?? null,
       total_collected: total_collected ?? null,
     };
@@ -252,6 +264,16 @@ export async function loadBnplData(
       n_merchants: byMerchant.length,
       by_merchant: byMerchant,
     };
+
+    // 2) Unbounded / heavy queries with short timeout — don't block the response
+    const [n_consumers_with_plan_all, n_overdue, credit_allocated] = await Promise.all([
+      withTimeoutNull(runCount(conn, consumersWithPlanSql()), SLOW_QUERY_TIMEOUT_MS),
+      withTimeoutNull(runCount(conn, OVERDUE_COUNT_SQL), SLOW_QUERY_TIMEOUT_MS),
+      withTimeoutNull(runScalar(conn, CREDIT_ALLOCATED_SQL), SLOW_QUERY_TIMEOUT_MS),
+    ]);
+    payload.n_consumers_with_plan_all = n_consumers_with_plan_all ?? null;
+    payload.n_overdue = n_overdue ?? null;
+    if (payload.loan_book) payload.loan_book.credit_allocated = credit_allocated ?? null;
   } catch (e) {
     payload.error = e instanceof Error ? e.message : String(e);
   }

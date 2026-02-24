@@ -38,9 +38,22 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+/** Default to last 30 days when no range given — avoids unbounded queries that time out. */
+function defaultDateRange(from: string | null, to: string | null): { from: string; to: string } {
+  if (from && to) return { from: from.slice(0, 10), to: to.slice(0, 10) };
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - 30);
+  return {
+    from: start.toISOString().slice(0, 10),
+    to: end.toISOString().slice(0, 10),
+  };
+}
+
 export async function GET(request: NextRequest) {
-  const from = request.nextUrl.searchParams.get('from') ?? null;
-  const to = request.nextUrl.searchParams.get('to') ?? null;
+  const fromParam = request.nextUrl.searchParams.get('from') ?? null;
+  const toParam = request.nextUrl.searchParams.get('to') ?? null;
+  const { from, to } = defaultDateRange(fromParam, toParam);
 
   try {
     const payload = await withTimeout(

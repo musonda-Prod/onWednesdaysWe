@@ -73,11 +73,20 @@ function formatRefreshed(iso: string): string {
   }
 }
 
+function last30Days(): [string, string] {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - 30);
+  return [start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)];
+}
+
+const [DEFAULT_FROM, DEFAULT_TO] = last30Days();
+
 export default function DashboardPage() {
   const [data, setData] = useState<BnplPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [from, setFrom] = useState(DEFAULT_FROM);
+  const [to, setTo] = useState(DEFAULT_TO);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     loan_book: true,
     funnel: true,
