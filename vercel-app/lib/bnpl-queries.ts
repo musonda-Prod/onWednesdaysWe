@@ -179,8 +179,9 @@ async function withTimeoutNull<T>(promise: Promise<T>, ms: number): Promise<T | 
   }
 }
 
-/** Queries that don't use date range — can be very slow on large tables. Run with short timeout. */
-const SLOW_QUERY_TIMEOUT_MS = 12_000;
+/** Per-query timeout so we always return within the function limit; slow queries become null. */
+const BOUNDED_QUERY_TIMEOUT_MS = 20_000;
+const SLOW_QUERY_TIMEOUT_MS = 8_000;
 
 export async function loadBnplData(
   conn: Connection,
@@ -211,8 +212,12 @@ export async function loadBnplData(
     merchant: { top3_volume_pct: null, n_merchants: null, by_merchant: [] },
   };
 
+  const run = (fn: () => Promise<number | null>, timeoutMs: number) => withTimeoutNull(fn(), timeoutMs);
+  const runCountT = (sql: string) => run(() => runCount(conn, sql), BOUNDED_QUERY_TIMEOUT_MS);
+  const runScalarT = (sql: string) => run(() => runScalar(conn, sql), BOUNDED_QUERY_TIMEOUT_MS);
+
   try {
-    // 1) Date-bounded queries only — keep these under the function timeout
+    // All queries run in parallel with per-query timeout — we never wait more than max(20s, 8s) = 20s for this batch
     const [
       n_applied,
       n_credit_check_completed,
@@ -224,17 +229,23 @@ export async function loadBnplData(
       total_collected,
       total_plan_amount,
       merchantRows,
+      n_consumers_with_plan_all,
+      n_overdue,
+      credit_allocated,
     ] = await Promise.all([
-      runCount(conn, appliedCountSql(from ?? undefined, to ?? undefined)),
-      runCount(conn, approvedCountSql(from ?? undefined, to ?? undefined)),
-      runCount(conn, kycVerifiedCountSql(from ?? undefined, to ?? undefined)),
-      runCount(conn, planCreationSql(from ?? undefined, to ?? undefined)),
-      runCount(conn, initialCollectionSql(from ?? undefined, to ?? undefined)),
-      runCount(conn, consumersWithPlanSql(from ?? undefined, to ?? undefined)),
-      runScalar(conn, loanBookSettledSql(from ?? undefined, to ?? undefined)),
-      runScalar(conn, loanBookCollectedSql(from ?? undefined, to ?? undefined)),
-      runScalar(conn, loanBookSettledSql(from ?? undefined, to ?? undefined)),
-      loadMerchantBreakdown(conn, from ?? undefined, to ?? undefined),
+      runCountT(appliedCountSql(from ?? undefined, to ?? undefined)),
+      runCountT(approvedCountSql(from ?? undefined, to ?? undefined)),
+      runCountT(kycVerifiedCountSql(from ?? undefined, to ?? undefined)),
+      runCountT(planCreationSql(from ?? undefined, to ?? undefined)),
+      runCountT(initialCollectionSql(from ?? undefined, to ?? undefined)),
+      runCountT(consumersWithPlanSql(from ?? undefined, to ?? undefined)),
+      runScalarT(loanBookSettledSql(from ?? undefined, to ?? undefined)),
+      runScalarT(loanBookCollectedSql(from ?? undefined, to ?? undefined)),
+      runScalarT(loanBookSettledSql(from ?? undefined, to ?? undefined)),
+      withTimeoutNull(loadMerchantBreakdown(conn, from ?? undefined, to ?? undefined), BOUNDED_QUERY_TIMEOUT_MS),
+      withTimeoutNull(runCount(conn, consumersWithPlanSql()), SLOW_QUERY_TIMEOUT_MS),
+      withTimeoutNull(runCount(conn, OVERDUE_COUNT_SQL), SLOW_QUERY_TIMEOUT_MS),
+      withTimeoutNull(runScalar(conn, CREDIT_ALLOCATED_SQL), SLOW_QUERY_TIMEOUT_MS),
     ]);
 
     payload.n_applied = n_applied ?? null;
@@ -243,20 +254,22 @@ export async function loadBnplData(
     payload.n_plan_creation = n_plan_creation ?? null;
     payload.n_initial_collection = n_initial_collection ?? null;
     payload.n_consumers_with_plan = n_consumers_with_plan ?? null;
+    payload.n_consumers_with_plan_all = n_consumers_with_plan_all ?? null;
+    payload.n_overdue = n_overdue ?? null;
     payload.applications = n_initial_collection ?? null;
     if (n_credit_check_completed != null && n_applied != null && n_applied > 0) {
       payload.approval_rate_pct = Math.round((100 * (n_credit_check_completed ?? 0)) / n_applied * 10) / 10;
     }
     payload.total_plan_amount = total_plan_amount ?? null;
     payload.loan_book = {
-      credit_allocated: null,
+      credit_allocated: credit_allocated ?? null,
       operations_settled: total_settled ?? null,
       operations_collected: total_collected ?? null,
       total_settled: total_settled ?? null,
       total_collected: total_collected ?? null,
     };
 
-    const byMerchant = merchantRows ?? [];
+    const byMerchant = Array.isArray(merchantRows) ? merchantRows : [];
     const totalVol = byMerchant.reduce((s, r) => s + r.total_plan_amount, 0);
     const top3Vol = byMerchant.slice(0, 3).reduce((s, r) => s + r.total_plan_amount, 0);
     payload.merchant = {
@@ -264,16 +277,6 @@ export async function loadBnplData(
       n_merchants: byMerchant.length,
       by_merchant: byMerchant,
     };
-
-    // 2) Unbounded / heavy queries with short timeout — don't block the response
-    const [n_consumers_with_plan_all, n_overdue, credit_allocated] = await Promise.all([
-      withTimeoutNull(runCount(conn, consumersWithPlanSql()), SLOW_QUERY_TIMEOUT_MS),
-      withTimeoutNull(runCount(conn, OVERDUE_COUNT_SQL), SLOW_QUERY_TIMEOUT_MS),
-      withTimeoutNull(runScalar(conn, CREDIT_ALLOCATED_SQL), SLOW_QUERY_TIMEOUT_MS),
-    ]);
-    payload.n_consumers_with_plan_all = n_consumers_with_plan_all ?? null;
-    payload.n_overdue = n_overdue ?? null;
-    if (payload.loan_book) payload.loan_book.credit_allocated = credit_allocated ?? null;
   } catch (e) {
     payload.error = e instanceof Error ? e.message : String(e);
   }

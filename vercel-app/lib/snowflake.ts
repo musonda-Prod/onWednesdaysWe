@@ -46,6 +46,21 @@ export function connectAsync(connection: snowflake.Connection): Promise<snowflak
   });
 }
 
+const CONNECTION_TIMEOUT_MS = 18_000;
+
+/** Connect with timeout so we don't burn the whole request on a sleeping warehouse. */
+export function connectWithTimeout(connection: snowflake.Connection): Promise<snowflake.Connection> {
+  return Promise.race([
+    connectAsync(connection),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error('Snowflake connection timed out (warehouse may be resuming). Try again in a few seconds.')),
+        CONNECTION_TIMEOUT_MS
+      )
+    ),
+  ]);
+}
+
 export function executeAsync(
   connection: snowflake.Connection,
   sql: string,
@@ -99,7 +114,7 @@ export async function withConnection<T>(
   fn: (conn: snowflake.Connection) => Promise<T>
 ): Promise<T> {
   const conn = createConnection();
-  await connectAsync(conn);
+  await connectWithTimeout(conn);
   try {
     return await fn(conn);
   } finally {
