@@ -5,6 +5,7 @@ Run: streamlit run dashboard.py
 """
 
 import base64
+import hmac
 import html
 import os
 import re
@@ -5682,9 +5683,54 @@ def _render_table_dashboard_body(df, key_suffix=""):
 # Max seconds to wait for Snowflake connection; avoids endless load when DB is slow/unreachable
 _CONNECTION_TIMEOUT_SECONDS = 45
 
+_DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "musonda@stitch.money")
+_DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "xK9#mPq2$vL7!nR4")
+
+
+def check_password() -> bool:
+    """Return True if the user has entered valid credentials, else show a login form."""
+    if st.session_state.get("authenticated"):
+        return True
+
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] { display: none; }
+        #MainMenu, footer, header { visibility: hidden; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _spacer_top, col, _spacer_bot = st.columns([1, 1.5, 1])
+    with col:
+        st.markdown(
+            "<h2 style='text-align:center; margin-bottom:4px;'>Portfolio Intelligence Console</h2>"
+            "<p style='text-align:center; opacity:0.6; margin-bottom:24px;'>Sign in to continue</p>",
+            unsafe_allow_html=True,
+        )
+        with st.form("login_form"):
+            username = st.text_input("Email", placeholder="you@company.com")
+            password = st.text_input("Password", type="password", placeholder="••••••••")
+            submitted = st.form_submit_button("Sign in", use_container_width=True)
+
+        if submitted:
+            if (
+                hmac.compare_digest(username.strip(), _DASHBOARD_USERNAME)
+                and hmac.compare_digest(password, _DASHBOARD_PASSWORD)
+            ):
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Invalid username or password.")
+    return False
+
 
 def main():
     inject_css()
+
+    if not check_password():
+        return
 
     # Streamlit Community Cloud: secrets are in st.secrets, not .env — push into os.environ for funnel_analyzer
     try:
