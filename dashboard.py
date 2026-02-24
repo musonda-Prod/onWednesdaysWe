@@ -5750,6 +5750,27 @@ def check_password() -> bool:
         <style>
         [data-testid="stSidebar"] { display: none; }
         #MainMenu, footer, header { visibility: hidden; }
+        [data-testid="stFormSubmitButton"] button {
+            background: #6366F1 !important;
+            color: #FFFFFF !important;
+            font-weight: 600 !important;
+            border: none !important;
+            border-radius: 8px !important;
+            padding: 0.6rem 1.2rem !important;
+            cursor: pointer !important;
+        }
+        [data-testid="stFormSubmitButton"] button:hover {
+            background: #4F46E5 !important;
+        }
+        [data-testid="stTextInput"] input {
+            background: #1E293B !important;
+            color: #E5E7EB !important;
+            border: 1px solid rgba(255,255,255,0.12) !important;
+            border-radius: 8px !important;
+        }
+        [data-testid="stTextInput"] label {
+            color: #CBD5E1 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -5794,19 +5815,45 @@ def main():
     except Exception:
         pass
 
+    duo_placeholder = st.empty()
+    with duo_placeholder.container():
+        st.markdown(
+            """
+            <style>
+            @keyframes duo-pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.4; }
+            }
+            .duo-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:60vh; text-align:center; }
+            .duo-icon { font-size:64px; margin-bottom:16px; animation: duo-pulse 2s ease-in-out infinite; }
+            .duo-title { font-size:22px; font-weight:700; color:#E5E7EB; margin-bottom:8px; }
+            .duo-subtitle { font-size:15px; color:#94A3B8; max-width:400px; line-height:1.6; }
+            .duo-spinner { margin-top:24px; width:36px; height:36px; border:3px solid rgba(255,255,255,0.1); border-top:3px solid #6366F1; border-radius:50%; animation: duo-spin 0.8s linear infinite; }
+            @keyframes duo-spin { to { transform: rotate(360deg); } }
+            </style>
+            <div class="duo-screen">
+                <div class="duo-icon">🔐</div>
+                <div class="duo-title">Waiting for Duo MFA</div>
+                <div class="duo-subtitle">Check your phone for a Duo push notification and approve it to continue.</div>
+                <div class="duo-spinner"></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     conn = None
     try:
-        with st.spinner("Connecting to data…"):
-            with ThreadPoolExecutor(max_workers=1) as ex:
-                fut = ex.submit(get_conn)
-                try:
-                    conn = fut.result(timeout=_CONNECTION_TIMEOUT_SECONDS)
-                except FuturesTimeoutError:
-                    raise RuntimeError(
-                        "Connection timed out after %s seconds. Check network/VPN and .env (Snowflake settings)."
-                        % _CONNECTION_TIMEOUT_SECONDS
-                    )
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(get_conn)
+            try:
+                conn = fut.result(timeout=_CONNECTION_TIMEOUT_SECONDS)
+            except FuturesTimeoutError:
+                raise RuntimeError(
+                    "Connection timed out after %s seconds. Check network/VPN and .env (Snowflake settings)."
+                    % _CONNECTION_TIMEOUT_SECONDS
+                )
     except Exception as e:
+        duo_placeholder.empty()
         err_str = str(e)
         st.error(f"Connection failed: {err_str}")
         if "250001" in err_str or "Failed to connect to DB" in err_str:
@@ -5835,6 +5882,8 @@ def main():
         with st.spinner("Loading dashboard…"):
             render_bnpl_performance(conn=None, tables=None)
         return
+
+    duo_placeholder.empty()
 
     # Sidebar: database selector
     try:
