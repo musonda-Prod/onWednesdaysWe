@@ -11,3 +11,4 @@ TABLE_SCHEMA.txt# Vercel app
 vercel-app/.env.local
 vercel-app/node_modules
 vercel-app/.next
+.DS_Store
