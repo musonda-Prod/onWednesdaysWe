@@ -150,6 +150,14 @@ export default function DashboardPage() {
   const pctDropCredit = nKyc ? Math.round((1000 * dropCredit) / nKyc) / 10 : 0;
   const pctDropPlan = nCredit ? Math.round((1000 * dropPlan) / nCredit) / 10 : 0;
   const pctDropInitial = nPlan ? Math.round((1000 * dropInitial) / nPlan) / 10 : 0;
+  const drops: { label: string; pct: number }[] = [
+    { label: 'Signed up → KYC', pct: pctDropKyc },
+    { label: 'KYC → Credit check', pct: pctDropCredit },
+    { label: 'Credit check → Plan', pct: pctDropPlan },
+    { label: 'Plan → Initial collection', pct: pctDropInitial },
+  ];
+  const sortedDrops = [...drops].sort((a, b) => b.pct - a.pct);
+  const largestDrop = sortedDrops.every((x) => x.pct === 0) ? '—' : sortedDrops[0].label + ' (' + sortedDrops[0].pct + '%)';
 
   const nextBestActions = [
     (personaPcts.stitch > 0 && PERSONA_DISPLAY_NAMES.stitch) ? `${PERSONA_DISPLAY_NAMES.stitch}: Focus on retry timing and early contact.` : null,
@@ -398,7 +406,7 @@ export default function DashboardPage() {
           {expanded.funnel && (
             <div className="expander-content">
               <p style={{ fontSize: '0.8rem', color: PALETTE.textSoft, marginTop: 8 }}>
-                Sign-up → Plan creation → initial collection. Largest drop: {[pctDropKyc, pctDropCredit, pctDropPlan, pctDropInitial].every((x) => x === 0) ? '—' : [['Signed up → KYC', pctDropKyc], ['KYC → Credit check', pctDropCredit], ['Credit check → Plan', pctDropPlan], ['Plan → Initial collection', pctDropInitial]].sort((a, b) => b[1] - a[1])[0]?.join(' ')}
+                Sign-up → Plan creation → initial collection. Largest drop: {largestDrop}
               </p>
               <div className="funnel-strip" style={{ marginTop: 12 }}>
                 <div className="funnel-step"><div className="funnel-step-label">Signed up</div><div className="funnel-step-value">{fmtNum(nApplied)}</div><div className="funnel-step-pct">—</div></div>
