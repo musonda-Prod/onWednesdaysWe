@@ -102,4 +102,39 @@ body {
 .funnel-step-value { font-size: 0.95rem; font-weight: 600; color: var(--color-text-primary); }
 .funnel-step-pct { font-size: 0.7rem; color: var(--color-text-muted); margin-top: 2px; }
 .funnel-arrow { color: var(--color-border-subtle); margin: 0 4px; }
+/* Hover tooltip with image for funnel steps */
+.funnel-step-wrap { position: relative; display: inline-block; }
+.funnel-step-wrap .funnel-step-tooltip {
+  visibility: hidden;
+  position: absolute;
+  z-index: 1000;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 100%;
+  margin-bottom: 8px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 6px;
+  width: 230px;
+  max-width: 95vw;
+  pointer-events: none;
+}
+.funnel-step-wrap:hover .funnel-step-tooltip { visibility: visible; }
+.funnel-step-wrap .funnel-step-tooltip img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+  vertical-align: top;
+  min-height: 80px;
+  background: var(--color-bg-primary);
+}
+.funnel-step-wrap .funnel-step-tooltip .funnel-step-tooltip-label {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  margin-top: 6px;
+  text-align: center;
+}
 .expander-content { margin-top: 8px; }

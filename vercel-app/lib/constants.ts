@@ -38,6 +38,15 @@ export const MACRO_ZONES = [
   { key: 'never_activated', name: 'Never Activated', internal_keys: ['never_activated'], sublabel: 'First instalment failed', color: PALETTE.chartInactive, description: 'First payment attempt failed. Funnel drop.', so_what: 'Improve checkout and first-payment UX.' },
 ];
 
+/** Funnel step label, hover image filename (in /funnel_screens/), and tooltip text. */
+export const FUNNEL_STEPS = [
+  { label: 'Signed up', image: 'signed_up.png', tooltip: 'Count of new signups in the selected period (all CONSUMER_PROFILE created).' },
+  { label: 'KYC completed', image: 'kyc_completed.png', tooltip: 'Users who completed identity verification. Drop-off = signed up but did not complete KYC.' },
+  { label: 'Credit check completed', image: 'credit_check.png', tooltip: 'Users who passed credit check. Drop-off = KYC done but credit rejected or not run.' },
+  { label: 'Plan creation', image: 'plan_creation.png', tooltip: 'Users who reached payment step (initial attempt). Drop-off = approved but did not reach plan/pay or abandoned.' },
+  { label: 'Initial collection', image: 'initial_collection.png', tooltip: 'Users who completed first payment at signup. Drop-off = card/3DS failed or abandoned.' },
+];
+
 export const FUNNEL_DROPOFF_SUGGESTIONS = [
   { from_step: 'Signed up', to_step: 'KYC completed', why: 'Users abandon before or during KYC: long form, unclear value, document capture friction, mobile UX, or they sign up but never open the verification link.', fix: 'Shorten the flow; send reminder SMS/email with one-tap link; show progress; optimise document capture; pre-fill where possible.' },
   { from_step: 'KYC completed', to_step: 'Credit check completed', why: 'Credit check rejected or not run: policy too strict, score thresholds, affordability rules, or technical failure.', fix: 'Review rejection reasons; relax non-risk levers where safe; improve messaging; retry transient failures.' },

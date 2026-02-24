@@ -7,8 +7,8 @@
 import snowflake from 'snowflake-sdk';
 
 function getConnectionOptions(): snowflake.ConnectionOptions {
-  const account = process.env.SNOWFLAKE_ACCOUNT ?? '';
-  let accountLocator = account.trim();
+  const account = (process.env.SNOWFLAKE_ACCOUNT ?? '').trim();
+  let accountLocator = account;
   if (accountLocator.includes('snowflake.com')) {
     try {
       const path = new URL(accountLocator).pathname.replace(/^\/+|\/+$/g, '');
@@ -25,11 +25,11 @@ function getConnectionOptions(): snowflake.ConnectionOptions {
   }
   return {
     account: accountLocator,
-    username: process.env.SNOWFLAKE_USER ?? '',
-    password: process.env.SNOWFLAKE_PASSWORD ?? '',
-    warehouse: process.env.SNOWFLAKE_WAREHOUSE ?? '',
-    database: process.env.SNOWFLAKE_DATABASE ?? '',
-    schema: process.env.SNOWFLAKE_SCHEMA ?? 'PUBLIC',
+    username: (process.env.SNOWFLAKE_USER ?? '').trim(),
+    password: (process.env.SNOWFLAKE_PASSWORD ?? '').trim(),
+    warehouse: (process.env.SNOWFLAKE_WAREHOUSE ?? '').trim(),
+    database: (process.env.SNOWFLAKE_DATABASE ?? '').trim(),
+    schema: ((process.env.SNOWFLAKE_SCHEMA ?? '') || 'PUBLIC').trim() || 'PUBLIC',
   };
 }
 

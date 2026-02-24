@@ -6,6 +6,7 @@ import {
   REVENUE_RATE,
   PERSONA_DISPLAY_NAMES,
   MACRO_ZONES,
+  FUNNEL_STEPS,
   FUNNEL_DROPOFF_SUGGESTIONS,
   DEFAULT_PERSONA_PCTS,
   DEFAULT_PERSONA_DELTAS,
@@ -84,6 +85,28 @@ export default function DashboardPage() {
     funnel_drop: false,
   });
 
+  const fallbackErrorPayload = useCallback((): BnplPayload => ({
+    from: from || null,
+    to: to || null,
+    refreshed_at: new Date().toISOString(),
+    applications: null,
+    approval_rate_pct: null,
+    n_applied: null,
+    n_kyc_completed: null,
+    n_credit_check_completed: null,
+    n_plan_creation: null,
+    n_initial_collection: null,
+    n_consumers_with_plan: null,
+    n_consumers_with_plan_all: null,
+    n_overdue: null,
+    loan_book: null,
+    total_plan_amount: null,
+    first_attempt_pct: null,
+    default_rate_pct: null,
+    penalty_ratio_pct: null,
+    merchant: { top3_volume_pct: null, n_merchants: null, by_merchant: [] },
+  }), [from, to]);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -91,35 +114,24 @@ export default function DashboardPage() {
       if (from) params.set('from', from);
       if (to) params.set('to', to);
       const res = await fetch(`/api/bnpl?${params.toString()}`);
+      const contentType = res.headers.get('content-type') ?? '';
+      const isJson = contentType.includes('application/json');
+      if (!isJson) {
+        const text = await res.text();
+        setData({ ...fallbackErrorPayload(), error: text || `Request failed (${res.status})` });
+        return;
+      }
       const json: BnplPayload = await res.json();
       setData(json);
     } catch (e) {
       setData({
-        from: from || null,
-        to: to || null,
-        refreshed_at: new Date().toISOString(),
+        ...fallbackErrorPayload(),
         error: e instanceof Error ? e.message : 'Request failed',
-        applications: null,
-        approval_rate_pct: null,
-        n_applied: null,
-        n_kyc_completed: null,
-        n_credit_check_completed: null,
-        n_plan_creation: null,
-        n_initial_collection: null,
-        n_consumers_with_plan: null,
-        n_consumers_with_plan_all: null,
-        n_overdue: null,
-        loan_book: null,
-        total_plan_amount: null,
-        first_attempt_pct: null,
-        default_rate_pct: null,
-        penalty_ratio_pct: null,
-        merchant: { top3_volume_pct: null, n_merchants: null, by_merchant: [] },
       });
     } finally {
       setLoading(false);
     }
-  }, [from, to]);
+  }, [from, to, fallbackErrorPayload]);
 
   useEffect(() => {
     fetchData();
@@ -411,15 +423,32 @@ export default function DashboardPage() {
                 Sign-up → Plan creation → initial collection. Largest drop: {String(largestDrop)}
               </p>
               <div className="funnel-strip" style={{ marginTop: 12 }}>
-                <div className="funnel-step"><div className="funnel-step-label">Signed up</div><div className="funnel-step-value">{fmtNum(nApplied)}</div><div className="funnel-step-pct">—</div></div>
-                <span className="funnel-arrow">→</span>
-                <div className="funnel-step"><div className="funnel-step-label">KYC completed</div><div className="funnel-step-value">{fmtNum(nKyc)}</div><div className="funnel-step-pct">{pctDropKyc}% dropped</div><div style={{ fontSize: '0.65rem', color: PALETTE.warn }}>↓ {dropKyc.toLocaleString()} from prev</div></div>
-                <span className="funnel-arrow">→</span>
-                <div className="funnel-step"><div className="funnel-step-label">Credit check completed</div><div className="funnel-step-value">{fmtNum(nCredit)}</div><div className="funnel-step-pct">{pctDropCredit}% dropped</div><div style={{ fontSize: '0.65rem', color: PALETTE.warn }}>↓ {dropCredit.toLocaleString()} from prev</div></div>
-                <span className="funnel-arrow">→</span>
-                <div className="funnel-step"><div className="funnel-step-label">Plan creation</div><div className="funnel-step-value">{fmtNum(nPlan)}</div><div className="funnel-step-pct">{pctDropPlan}% dropped</div><div style={{ fontSize: '0.65rem', color: PALETTE.warn }}>↓ {dropPlan.toLocaleString()} from prev</div></div>
-                <span className="funnel-arrow">→</span>
-                <div className="funnel-step"><div className="funnel-step-label">Initial collection</div><div className="funnel-step-value">{fmtNum(nInitial)}</div><div className="funnel-step-pct">{pctDropInitial}% dropped</div><div style={{ fontSize: '0.65rem', color: PALETTE.warn }}>↓ {dropInitial.toLocaleString()} from prev</div></div>
+                {[
+                  { value: nApplied, pctStr: '—', drop: 0 },
+                  { value: nKyc, pctStr: `${pctDropKyc}% dropped`, drop: dropKyc },
+                  { value: nCredit, pctStr: `${pctDropCredit}% dropped`, drop: dropCredit },
+                  { value: nPlan, pctStr: `${pctDropPlan}% dropped`, drop: dropPlan },
+                  { value: nInitial, pctStr: `${pctDropInitial}% dropped`, drop: dropInitial },
+                ].map((step, i) => {
+                  const config = FUNNEL_STEPS[i];
+                  return (
+                    <span key={config?.label ?? i} style={{ display: 'inline-flex', alignItems: 'flex-start' }}>
+                      {i > 0 && <span className="funnel-arrow">→</span>}
+                      <div className="funnel-step-wrap" title={config?.tooltip} style={{ cursor: 'help' }}>
+                        <div className="funnel-step-tooltip">
+                          <img src={`/funnel_screens/${config?.image ?? ''}`} alt="" />
+                          <div className="funnel-step-tooltip-label">{config?.label ?? ''} — screen</div>
+                        </div>
+                        <div className="funnel-step">
+                          <div className="funnel-step-label">{config?.label ?? ''}</div>
+                          <div className="funnel-step-value">{fmtNum(step.value)}</div>
+                          <div className="funnel-step-pct">{step.pctStr}</div>
+                          {step.drop > 0 && <div style={{ fontSize: '0.65rem', color: PALETTE.warn }}>↓ {step.drop.toLocaleString()} from prev</div>}
+                        </div>
+                      </div>
+                    </span>
+                  );
+                })}
               </div>
               <p style={{ fontSize: '0.8rem', color: PALETTE.textSoft, marginTop: 12 }}>
                 <strong>Consumers with ≥1 plan:</strong> {fmtNum(d?.n_consumers_with_plan)} (in selected date range) {d?.n_consumers_with_plan_all != null ? ` · ${fmtNum(d.n_consumers_with_plan_all)} all time` : ''}
@@ -498,7 +527,7 @@ export default function DashboardPage() {
           </>
         )}
 
-        <p className="section-title" style={{ marginTop: 32 }}>Merchant risk</p>
+        <p className="section-title" style={{ marginTop: 32 }}>Merchant concentration</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 24 }}>
           <div style={{ background: PALETTE.panel, border: `1px solid ${PALETTE.border}`, borderRadius: 8, padding: 12 }}>
             <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: PALETTE.textSoft }}>Top 3 merchant concentration</div>
@@ -512,33 +541,37 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        <p style={{ fontWeight: 700, marginBottom: 4 }}>Where our loans are concentrated</p>
+        <p style={{ fontSize: '0.8rem', color: PALETTE.textSoft, marginBottom: 12 }}>Share of total loan value by merchant (%). Plans and value are for the selected date range.</p>
         {(() => {
           const byMerchant = d?.merchant?.by_merchant;
-          if (!byMerchant || byMerchant.length === 0) return null;
+          if (!byMerchant || byMerchant.length === 0) {
+            return (
+              <div style={{ background: PALETTE.panel, border: `1px solid ${PALETTE.border}`, borderRadius: 8, padding: '16px 20px', marginBottom: 24 }}>
+                <p style={{ fontSize: '0.9rem', color: PALETTE.textSoft, margin: 0 }}>No merchant data for the selected period. Check date range and data connection.</p>
+              </div>
+            );
+          }
           const totalVol = byMerchant.reduce((s, r) => s + r.total_plan_amount, 0);
           const top12 = byMerchant.slice(0, 12);
           const barColors = [PALETTE.chartStable, PALETTE.chartRoller, PALETTE.chartVolatile, PALETTE.chartEscalator, PALETTE.accent, '#8B5CF6', '#06B6D4', '#EC4899', '#84CC16', '#F97316'];
           return (
-            <>
-              <p style={{ fontWeight: 700, marginBottom: 4 }}>Where our loans are concentrated</p>
-              <p style={{ fontSize: '0.8rem', color: PALETTE.textSoft, marginBottom: 12 }}>Share of total loan value by merchant (%). Plans and value are for the selected date range.</p>
-              <div style={{ background: PALETTE.panel, border: `1px solid ${PALETTE.border}`, borderRadius: 8, padding: '16px 20px', marginBottom: 24 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {top12.map((row, i) => {
-                    const pct = totalVol > 0 ? (100 * row.total_plan_amount) / totalVol : 0;
-                    return (
-                      <div key={row.merchant} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{ flex: '0 0 140px', fontSize: '0.8rem', color: PALETTE.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.merchant}>{row.merchant}</div>
-                        <div style={{ flex: 1, minWidth: 0, height: 22, background: PALETTE.elevated, borderRadius: 4, overflow: 'hidden', display: 'flex' }}>
-                          <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: barColors[i % barColors.length], borderRadius: 4 }} title={`Plans: ${row.plan_count} · Value: ${row.total_plan_amount.toLocaleString()} · ${pct.toFixed(1)}%`} />
-                        </div>
-                        <div style={{ flex: '0 0 48px', fontSize: '0.8rem', fontWeight: 600, color: PALETTE.text, textAlign: 'right' }}>{pct.toFixed(1)}%</div>
+            <div style={{ background: PALETTE.panel, border: `1px solid ${PALETTE.border}`, borderRadius: 8, padding: '16px 20px', marginBottom: 24 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {top12.map((row, i) => {
+                  const pct = totalVol > 0 ? (100 * row.total_plan_amount) / totalVol : 0;
+                  return (
+                    <div key={row.merchant} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ flex: '0 0 140px', fontSize: '0.8rem', color: PALETTE.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.merchant}>{row.merchant}</div>
+                      <div style={{ flex: 1, minWidth: 0, height: 22, background: PALETTE.elevated, borderRadius: 4, overflow: 'hidden', display: 'flex' }}>
+                        <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: barColors[i % barColors.length], borderRadius: 4 }} title={`Plans: ${row.plan_count} · Value: ${row.total_plan_amount.toLocaleString()} · ${pct.toFixed(1)}%`} />
                       </div>
-                    );
-                  })}
-                </div>
+                      <div style={{ flex: '0 0 48px', fontSize: '0.8rem', fontWeight: 600, color: PALETTE.text, textAlign: 'right' }}>{pct.toFixed(1)}%</div>
+                    </div>
+                  );
+                })}
               </div>
-            </>
+            </div>
           );
         })()}
 
