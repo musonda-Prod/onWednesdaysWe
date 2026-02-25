@@ -729,13 +729,14 @@ WHERE i.next_execution_date IS NOT NULL AND (i.status = 'PENDING' OR i.status = 
 ORDER BY i.created_at DESC
 """
 
-# Bad payers: same population as Uncollected instalments (LEFT JOIN like OVERDUE so count matches). No names (PII). _run_query_df adds LIMIT.
+# Bad payers: same population as Uncollected instalments. Include retry count (collection attempts per instalment). No names (PII). _run_query_df adds LIMIT.
 def _bad_payers_sql():
     return """
 SELECT ip.CONSUMER_PROFILE_ID AS client_id,
        ip.CLIENT_NAME AS where_shopped,
        COALESCE(i.QUANTITY, i.AMOUNT, 0) AS amount_owed,
-       i.NEXT_EXECUTION_DATE AS due_date
+       i.NEXT_EXECUTION_DATE AS due_date,
+       (SELECT COUNT(*) FROM CDC_BNPL_PRODUCTION.PUBLIC.collection_attempt_instalment_link cail WHERE cail.instalment_id = i.id) AS retries
 FROM CDC_BNPL_PRODUCTION.PUBLIC.instalment i
 LEFT JOIN CDC_BNPL_PRODUCTION.PUBLIC.instalment_plan ip ON ip.id = i.instalment_plan_id
 WHERE i.next_execution_date IS NOT NULL AND (UPPER(TRIM(COALESCE(i.STATUS,''))) IN ('PENDING','OVERDUE'))
@@ -5575,9 +5576,9 @@ Share of total GMV that comes from the **top 3 merchants**.
     elif metrics.get("data_source"):
         st.caption(f"Metrics from: **{metrics['data_source']}**.")
 
-    # ——— Bad payers (uncollected instalments): no names, client id + merchant + amount + due + overdue days) ———
+    # ——— Bad payers (uncollected instalments): no names, client id + merchant + amount + due + overdue days + retries ———
     st.markdown("---")
-    st.markdown('<p class="section-title" title="Instalments with PENDING or OVERDUE status that have not been collected. No personal names shown.">Bad payers</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-title" title="Instalments with PENDING or OVERDUE status that have not been collected. Retries = number of collection attempts. No personal names shown.">Bad payers</p>', unsafe_allow_html=True)
     bad_payers_df = load_bad_payers(conn, limit=500) if conn else None
     if bad_payers_df is not None and not bad_payers_df.empty:
         cols_upper = {str(c).upper(): c for c in bad_payers_df.columns}
@@ -5586,6 +5587,7 @@ Share of total GMV that comes from the **top 3 merchants**.
         amount_col = next((cols_upper.get(k) for k in ("AMOUNT_OWED", "QUANTITY", "AMOUNT") if k in cols_upper), None)
         due_col = next((cols_upper.get(k) for k in ("DUE_DATE", "NEXT_EXECUTION_DATE") if k in cols_upper), None)
         overdue_col = next((c for c in bad_payers_df.columns if str(c).lower() == "overdue_days"), None)
+        retries_col = next((cols_upper.get(k) for k in ("RETRIES",) if k in cols_upper), None)
         rename = {}
         if client_col is not None:
             rename[client_col] = "Client ID"
@@ -5597,8 +5599,10 @@ Share of total GMV that comes from the **top 3 merchants**.
             rename[due_col] = "Due date"
         if overdue_col is not None:
             rename[overdue_col] = "Overdue days"
+        if retries_col is not None:
+            rename[retries_col] = "Retries"
         display_df = bad_payers_df.rename(columns=rename).copy()
-        show_cols = [c for c in ["Client ID", "Where they shopped", "Amount owed", "Due date", "Overdue days"] if c in display_df.columns]
+        show_cols = [c for c in ["Client ID", "Where they shopped", "Amount owed", "Due date", "Overdue days", "Retries"] if c in display_df.columns]
         if show_cols:
             display_df = display_df[show_cols]
             if "Amount owed" in display_df.columns:
@@ -5606,10 +5610,42 @@ Share of total GMV that comes from the **top 3 merchants**.
                 display_df["Amount owed"] = amt.apply(lambda x: f"R{x:,.0f}" if pd.notna(x) else "—")
             if "Due date" in display_df.columns:
                 display_df["Due date"] = pd.to_datetime(display_df["Due date"], errors="coerce").dt.strftime("%d %b %Y")
-            st.caption(f"Uncollected instalments (PENDING/OVERDUE, no names). **{len(display_df):,}** rows — same set as the Uncollected instalments count above.")
+            if "Retries" in display_df.columns:
+                display_df["Retries"] = pd.to_numeric(display_df["Retries"], errors="coerce").fillna(0).astype(int)
+            st.caption(f"Uncollected instalments (PENDING/OVERDUE, no names). **{len(display_df):,}** rows — same set as the Uncollected instalments count above. **Retries** = number of collection attempts for that instalment.")
             st.dataframe(display_df, use_container_width=True, hide_index=True)
         else:
             st.caption("Uncollected instalments data loaded but column mapping failed. Check INSTALMENT / INSTALMENT_PLAN schema.")
+        # Retry detail: collection attempts for these bad-payer instalments
+        attempts_df = load_overdue_collection_attempts(conn) if conn else None
+        if attempts_df is not None and not attempts_df.empty:
+            with st.expander("Retry detail — collection attempts for bad-payer instalments", expanded=False):
+                cols_upper_a = {str(c).upper(): c for c in attempts_df.columns}
+                ren = {}
+                for old, new in [
+                    ("INSTALMENT_STATUS", "Instalment status"),
+                    ("QUANTITY", "Amount"),
+                    ("NEXT_EXECUTION_DATE", "Due date"),
+                    ("CA_STATUS", "Attempt status"),
+                    ("FAILURE_CLASSIFICATION", "Failure reason"),
+                    ("INTERNAL_REASON", "Internal reason"),
+                    ("EXECUTED_AT", "Attempt date"),
+                ]:
+                    if old in cols_upper_a:
+                        ren[cols_upper_a[old]] = new
+                detail_df = attempts_df.rename(columns=ren).copy()
+                detail_cols = [c for c in ["Instalment status", "Amount", "Due date", "Attempt status", "Failure reason", "Internal reason", "Attempt date"] if c in detail_df.columns]
+                if detail_cols:
+                    detail_df = detail_df[detail_cols]
+                    if "Due date" in detail_df.columns:
+                        detail_df["Due date"] = pd.to_datetime(detail_df["Due date"], errors="coerce").dt.strftime("%d %b %Y")
+                    if "Attempt date" in detail_df.columns:
+                        detail_df["Attempt date"] = pd.to_datetime(detail_df["Attempt date"], errors="coerce").dt.strftime("%d %b %Y %H:%M")
+                    if "Amount" in detail_df.columns:
+                        amt = pd.to_numeric(detail_df["Amount"], errors="coerce").fillna(0)
+                        detail_df["Amount"] = amt.apply(lambda x: f"R{x:,.0f}" if pd.notna(x) else "—")
+                    st.caption("One row per collection attempt on an uncollected (PENDING/OVERDUE) instalment. Use this to see why retries failed (attempt status, failure reason).")
+                    st.dataframe(detail_df, use_container_width=True, hide_index=True)
     else:
         st.caption("No uncollected instalments, or data not available. Bad payers = instalments with PENDING/OVERDUE status and no successful collection.")
 

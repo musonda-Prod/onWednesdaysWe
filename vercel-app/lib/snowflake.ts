@@ -6,6 +6,15 @@
 
 import snowflake from 'snowflake-sdk';
 
+/** Snowflake account must be a valid subdomain: lowercase, alphanumeric, hyphens only. */
+function toSubdomain(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
 function getConnectionOptions(): snowflake.ConnectionOptions {
   const account = (process.env.SNOWFLAKE_ACCOUNT ?? '').trim();
   let accountLocator = account;
@@ -13,15 +22,17 @@ function getConnectionOptions(): snowflake.ConnectionOptions {
     try {
       const path = new URL(accountLocator).pathname.replace(/^\/+|\/+$/g, '');
       const parts = path.split('/').filter(Boolean);
-      if (parts.length >= 2) accountLocator = `${parts[0]}-${parts[1]}`;
-      else if (parts.length === 1) accountLocator = parts[0];
+      if (parts.length >= 2) accountLocator = `${toSubdomain(parts[0])}-${toSubdomain(parts[1])}`;
+      else if (parts.length === 1) accountLocator = toSubdomain(parts[0]);
     } catch {
       // ignore
     }
+  } else {
+    accountLocator = toSubdomain(accountLocator);
   }
   const region = (process.env.SNOWFLAKE_REGION ?? '').trim();
   if (region && !accountLocator.includes('.')) {
-    accountLocator = `${accountLocator}.${region}`;
+    accountLocator = `${accountLocator}.${toSubdomain(region)}`;
   }
   return {
     account: accountLocator,
