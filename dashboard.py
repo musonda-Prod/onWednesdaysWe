@@ -729,13 +729,14 @@ WHERE i.next_execution_date IS NOT NULL AND (i.status = 'PENDING' OR i.status = 
 ORDER BY i.created_at DESC
 """
 
-# Bad payers: same population as Uncollected instalments. Include retry count (collection attempts per instalment). No names (PII). _run_query_df adds LIMIT.
+# Bad payers: same population as Uncollected instalments. Include retry count and days past due. No names (PII). _run_query_df adds LIMIT.
 def _bad_payers_sql():
     return """
 SELECT ip.CONSUMER_PROFILE_ID AS client_id,
        ip.CLIENT_NAME AS where_shopped,
        COALESCE(i.QUANTITY, i.AMOUNT, 0) AS amount_owed,
        i.NEXT_EXECUTION_DATE AS due_date,
+       GREATEST(0, DATEDIFF('day', i.NEXT_EXECUTION_DATE, CURRENT_DATE())) AS overdue_days,
        (SELECT COUNT(*) FROM CDC_BNPL_PRODUCTION.PUBLIC.collection_attempt_instalment_link cail WHERE cail.instalment_id = i.id) AS retries
 FROM CDC_BNPL_PRODUCTION.PUBLIC.instalment i
 LEFT JOIN CDC_BNPL_PRODUCTION.PUBLIC.instalment_plan ip ON ip.id = i.instalment_plan_id
@@ -2894,22 +2895,18 @@ def _signal_concentration(top3_pct):
     return state, label, dot, micro
 
 
-def _signal_momentum(rank_sa, approval_pct):
-    """MOMENTUM: rank + approval. Green = improving (top rank or high approval); Amber = flat; Red = declining. Rank 6+ not shown (capped at 5)."""
-    rank = rank_sa if rank_sa is not None else 5
-    appr = approval_pct if approval_pct is not None else 70
-    if rank <= 2 or appr >= 75:
-        state, label, dot = "green", "Improving", "🟢"
-    elif rank <= 4 or appr >= 65:
-        state, label, dot = "amber", "Flat", "🟡"
+def _signal_momentum(signups_count):
+    """MOMENTUM: signups in period. Green = strong; Amber = moderate; Red = low or no data."""
+    n = signups_count if signups_count is not None else 0
+    if n >= 50:
+        state, label, dot = "green", "Strong", "🟢"
+    elif n >= 10:
+        state, label, dot = "amber", "Moderate", "🟡"
+    elif n > 0:
+        state, label, dot = "red", "Low", "🔴"
     else:
-        state, label, dot = "red", "Declining", "🔴"
-    if rank is not None and rank <= 5:
-        micro = f"Rank #{rank} in SA"
-    else:
-        micro = ""
-    if approval_pct is not None:
-        micro += f" · Approval {approval_pct:.0f}%" if micro else f"Approval {approval_pct:.0f}%"
+        state, label, dot = "amber", "No data", "🟡"
+    micro = f"{int(n):,} signups in period" if n is not None and n > 0 else "Signups (CONSUMER_PROFILE in period)"
     return state, label, dot, micro
 
 
@@ -4523,15 +4520,33 @@ def render_bnpl_performance(conn, tables):
     fa_pct = first_attempt_pct if first_attempt_pct is not None else None
     esc_drift = persona_deltas.get("gantu")
     top3_pct = top3_source if isinstance(top3_source, (int, float)) else None
+    signups_count = load_applied_count(conn, from_date, to_date) if (conn and from_date and to_date) else None
     h_state, h_label, h_dot, h_micro = _signal_health(default_pct, fa_pct)
     r_state, r_label, r_dot, r_micro = _signal_risk(esc_drift)
     c_state, c_label, c_dot, c_micro = _signal_concentration(top3_pct)
-    m_state, m_label, m_dot, m_micro = _signal_momentum(rank_sa, approval_pct)
+    m_state, m_label, m_dot, m_micro = _signal_momentum(signups_count)
     signal_colors = {"green": PALETTE["success"], "amber": PALETTE["warn"], "red": PALETTE["danger"]}
     portfolio_status_line = " ".join(thesis_lines) if thesis_lines else "Portfolio status: connect data for signal."
     apps = metrics.get("applications") or 0
     approval_pct_display = metrics.get("approval_rate_pct")
     n_uncollected = len(overdue_inst_df) if overdue_inst_df is not None and not overdue_inst_df.empty else None
+    # Total overdue amount and days-past-due range (instalments whose due date has passed)
+    total_overdue_header = None
+    days_past_due_range_header = None
+    if overdue_inst_df is not None and not overdue_inst_df.empty:
+        cols_u = {str(c).upper(): c for c in overdue_inst_df.columns}
+        amt_col = cols_u.get("QUANTITY") or cols_u.get("AMOUNT")
+        due_col = cols_u.get("NEXT_EXECUTION_DATE") or cols_u.get("DUE_DATE")
+        if amt_col is not None and due_col is not None:
+            due_ts = pd.to_datetime(overdue_inst_df[due_col], errors="coerce")
+            past_due = overdue_inst_df[due_ts < pd.Timestamp.now().normalize()]
+            if not past_due.empty:
+                total_overdue_header = pd.to_numeric(past_due[amt_col], errors="coerce").fillna(0).sum()
+                days_pd = (pd.Timestamp.now().normalize() - due_ts[due_ts < pd.Timestamp.now().normalize()]).dt.days
+                d_min, d_max = int(days_pd.min()), int(days_pd.max())
+                days_past_due_range_header = f"{d_min}–{d_max} days" if d_min != d_max else f"{d_max} days"
+    total_overdue_str = f"R{total_overdue_header:,.0f}" if total_overdue_header is not None and total_overdue_header > 0 else "—"
+    days_past_due_str = days_past_due_range_header if days_past_due_range_header else "—"
     kpi_label = "font-size:0.6rem; text-transform:uppercase; letter-spacing:0.05em; color:" + PALETTE["text_soft"] + ";"
     kpi_value = "font-size:1rem; font-weight:700; color:" + PALETTE["heading"] + ";"
     active_str = f"{int(apps):,}" if apps else "—"
@@ -4542,12 +4557,16 @@ def render_bnpl_performance(conn, tables):
     tt_approval = "Approval rate: Percentage of applicants who were allocated credit (passed credit check) vs those who were rejected. From CONSUMER_PROFILE / credit decisioning. Higher = more applicants get a yes."
     tt_uncollected = "Uncollected instalments: Number of instalments that are PENDING or OVERDUE — due date has passed or next payment not yet collected. These are amounts still owed by customers. Source: INSTALMENT with status PENDING/OVERDUE."
     tt_revenue = "Revenue = 4.99% of each individual plan amount (sum over all plans in the selected date range). From INSTALMENT_PLAN plan amounts."
+    tt_total_overdue = "Total overdue: Sum of amounts owed on instalments whose due date has already passed (past-due only). Same population as Bad payers section."
+    tt_days_past_due = "Days past due: Range of how many days overdue the past-due instalments are (min–max). From due date to today."
     kpi_row = (
         '<div style="display:flex; gap:24px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid ' + PALETTE["border"] + ';">'
         '<div style="cursor:help;" title="' + html.escape(tt_active) + '"><div style="' + kpi_label + '">Active users</div><div style="' + kpi_value + '">' + active_str + '</div></div>'
         '<div style="cursor:help;" title="' + html.escape(tt_approval) + '"><div style="' + kpi_label + '">Approval rate</div><div style="' + kpi_value + '">' + approval_str + '</div></div>'
         '<div style="cursor:help;" title="' + html.escape(tt_uncollected) + '"><div style="' + kpi_label + '">Uncollected instalments</div><div style="' + kpi_value + '">' + uncollected_str + '</div></div>'
         '<div style="cursor:help;" title="' + html.escape(tt_revenue) + '"><div style="' + kpi_label + '">Revenue</div><div style="' + kpi_value + '">' + revenue_str + '</div></div>'
+        '<div style="cursor:help;" title="' + html.escape(tt_total_overdue) + '"><div style="' + kpi_label + '">Total overdue</div><div style="' + kpi_value + '">' + total_overdue_str + '</div></div>'
+        '<div style="cursor:help;" title="' + html.escape(tt_days_past_due) + '"><div style="' + kpi_label + '">Days past due</div><div style="' + kpi_value + '">' + days_past_due_str + '</div></div>'
         '</div>'
     )
     last_refreshed = st.session_state.get("bnpl_last_refreshed")
@@ -4607,7 +4626,7 @@ def render_bnpl_performance(conn, tables):
         "HEALTH: Based on default rate and first-attempt collection success. Green = default &lt;7% and first attempt &gt;65%. Amber = one metric outside band. Red = both outside. Hover on Core health metrics for each definition.",
         "RISK: Repeat Defaulter share trend (4-week drift). Green = flat or decreasing. Amber = +0–1pp increase. Red = &gt;1pp increase. Tracks whether your highest-risk segment is growing.",
         "CONCENTRATION: Top 3 merchants' share of total volume. Green = &lt;30% (diversified). Amber = 30–45%. Red = &gt;45% (high partner concentration risk).",
-        "MOMENTUM: Rank vs peers and approval rate trend. Green = improving (better rank or higher approval). Amber = flat. Red = declining. See Competitive position for rank.",
+        "MOMENTUM: Signups in the selected period (CONSUMER_PROFILE rows). Green = strong (≥50). Amber = moderate (10–49) or no data. Red = low (<10).",
     ]
     signals_html = ""
     for i, (dot, label, micro, border_color) in enumerate(signals_data):
@@ -4633,8 +4652,8 @@ def render_bnpl_performance(conn, tables):
 **CONCENTRATION** — Top 3 merchant exposure %.  
 🟢 Green < 30%. 🟡 Amber 30–45%. 🔴 Red > 45%.
 
-**MOMENTUM** — Rank and approval trend.  
-🟢 Green = improving (top rank or high approval). 🟡 Amber = flat. 🔴 Red = declining.
+**MOMENTUM** — Signups in period.  
+🟢 Green = strong (≥50 signups). 🟡 Amber = moderate (10–49) or no data. 🔴 Red = low (<10).
 """)
     st.markdown("")
 
@@ -5588,6 +5607,21 @@ Share of total GMV that comes from the **top 3 merchants**.
         due_col = next((cols_upper.get(k) for k in ("DUE_DATE", "NEXT_EXECUTION_DATE") if k in cols_upper), None)
         overdue_col = next((c for c in bad_payers_df.columns if str(c).lower() == "overdue_days"), None)
         retries_col = next((cols_upper.get(k) for k in ("RETRIES",) if k in cols_upper), None)
+        # Summary: total amount overdue and range of days past due (only instalments whose due date has passed)
+        if amount_col is not None and overdue_col is not None:
+            past_due = bad_payers_df[bad_payers_df[overdue_col].fillna(0).astype(int) > 0]
+            if not past_due.empty:
+                total_overdue = pd.to_numeric(past_due[amount_col], errors="coerce").fillna(0).sum()
+                days_vals = past_due[overdue_col].dropna().astype(int)
+                d_min, d_max = int(days_vals.min()), int(days_vals.max())
+                days_range = f"{d_min}–{d_max} days" if d_min != d_max else f"{d_max} days"
+                st.markdown(
+                    f'<div class="card-tile" style="display:inline-block; margin-right:1rem; margin-bottom:0.5rem;">'
+                    f'<span class="card-label">Total overdue</span><br><span class="card-value">R{total_overdue:,.0f}</span></div>'
+                    f'<div class="card-tile" style="display:inline-block; margin-bottom:0.5rem;">'
+                    f'<span class="card-label">Days past due (range)</span><br><span class="card-value">{days_range}</span></div>',
+                    unsafe_allow_html=True,
+                )
         rename = {}
         if client_col is not None:
             rename[client_col] = "Client ID"
@@ -5612,6 +5646,8 @@ Share of total GMV that comes from the **top 3 merchants**.
                 display_df["Due date"] = pd.to_datetime(display_df["Due date"], errors="coerce").dt.strftime("%d %b %Y")
             if "Retries" in display_df.columns:
                 display_df["Retries"] = pd.to_numeric(display_df["Retries"], errors="coerce").fillna(0).astype(int)
+            if "Overdue days" in display_df.columns:
+                display_df["Overdue days"] = pd.to_numeric(display_df["Overdue days"], errors="coerce").fillna(0).astype(int)
             st.caption(f"Uncollected instalments (PENDING/OVERDUE, no names). **{len(display_df):,}** rows — same set as the Uncollected instalments count above. **Retries** = number of collection attempts for that instalment.")
             st.dataframe(display_df, use_container_width=True, hide_index=True)
         else:
